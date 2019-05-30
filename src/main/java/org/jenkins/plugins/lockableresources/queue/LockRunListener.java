@@ -8,23 +8,24 @@
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 package org.jenkins.plugins.lockableresources.queue;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.logging.Logger;
+
+import org.jenkins.plugins.lockableresources.LockableResource;
+import org.jenkins.plugins.lockableresources.LockableResourcesManager;
+import org.jenkins.plugins.lockableresources.actions.LockedResourcesBuildAction;
+import org.jenkins.plugins.lockableresources.actions.ResourceVariableNameAction;
+
 import hudson.Extension;
 import hudson.matrix.MatrixBuild;
 import hudson.model.AbstractBuild;
 import hudson.model.Job;
 import hudson.model.Run;
-import hudson.model.TaskListener;
-import hudson.model.listeners.RunListener;
 import hudson.model.StringParameterValue;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.logging.Logger;
-
-import org.jenkins.plugins.lockableresources.LockableResourcesManager;
-import org.jenkins.plugins.lockableresources.LockableResource;
-import org.jenkins.plugins.lockableresources.actions.LockedResourcesBuildAction;
-import org.jenkins.plugins.lockableresources.actions.ResourceVariableNameAction;
+import hudson.model.TaskListener;
+import hudson.model.Cause.UserIdCause;
+import hudson.model.listeners.RunListener;
 
 @Extension
 public class LockRunListener extends RunListener<Run<?, ?>> {
@@ -32,6 +33,7 @@ public class LockRunListener extends RunListener<Run<?, ?>> {
 	static final String LOG_PREFIX = "[lockable-resources]";
 	static final Logger LOGGER = Logger.getLogger(LockRunListener.class
 			.getName());
+	public static String userId = null;
 
 	@Override
 	public void onStarted(Run<?, ?> build, TaskListener listener) {
@@ -39,6 +41,13 @@ public class LockRunListener extends RunListener<Run<?, ?>> {
 		// only the child jobs will actually lock resources.
 		if (build instanceof MatrixBuild)
 			return;
+		// If the job is started by a timer or chain the user will be null
+		try{
+			userId = build.getCause(UserIdCause.class).getUserId();
+		}catch(Exception e){
+			System.out.println("Error getting the user. " + e);
+			userId = null;
+		}
 
 		if (build instanceof AbstractBuild) {
 			Job<?, ?> proj = Utils.getProject(build);
@@ -79,6 +88,8 @@ public class LockRunListener extends RunListener<Run<?, ?>> {
 
 	@Override
 	public void onCompleted(Run<?, ?> build, TaskListener listener) {
+		
+		userId = null;
 		// Skip unlocking for multiple configuration projects,
 		// only the child jobs will actually unlock resources.
 		if (build instanceof MatrixBuild)
@@ -99,6 +110,8 @@ public class LockRunListener extends RunListener<Run<?, ?>> {
 
 	@Override
 	public void onDeleted(Run<?, ?> build) {
+		
+		userId = null;
 		// Skip unlocking for multiple configuration projects,
 		// only the child jobs will actually unlock resources.
 		if (build instanceof MatrixBuild)
@@ -111,6 +124,10 @@ public class LockRunListener extends RunListener<Run<?, ?>> {
 			LOGGER.fine(build.getFullDisplayName() + " released lock on "
 					+ required);
 		}
+	}
+	
+	public static String getUserId(){
+		return userId;
 	}
 
 }

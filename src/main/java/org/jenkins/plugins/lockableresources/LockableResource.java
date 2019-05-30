@@ -8,44 +8,37 @@
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 package org.jenkins.plugins.lockableresources;
 
-import groovy.lang.Binding;
-import groovy.lang.GroovyShell;
-import hudson.Extension;
-import hudson.Util;
-import hudson.model.AbstractDescribableImpl;
-import hudson.model.AbstractBuild;
-import hudson.model.Descriptor;
-import hudson.model.Queue;
-import hudson.model.Run;
-import hudson.model.Queue.Item;
-import hudson.model.Queue.Task;
-import hudson.model.User;
-import hudson.tasks.Mailer.UserProperty;
-
-import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import jenkins.model.Jenkins;
-
 import org.jenkinsci.plugins.workflow.steps.StepContext;
-import org.jinterop.winreg.IJIWinReg.saveFile;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.export.Exported;
 import org.kohsuke.stapler.export.ExportedBean;
 
 import com.infradna.tool.bridge_method_injector.WithBridgeMethods;
-import com.seastreet.client.api.StratOSControllerAPI;
-import com.seastreet.stratos.dto.Objective;
 
 import edu.umd.cs.findbugs.annotations.CheckForNull;
+import groovy.lang.Binding;
+import groovy.lang.GroovyShell;
+import hudson.Extension;
+import hudson.Util;
+import hudson.model.AbstractBuild;
+import hudson.model.AbstractDescribableImpl;
+import hudson.model.Descriptor;
+import hudson.model.Queue;
+import hudson.model.Run;
+import hudson.model.User;
+import hudson.model.Queue.Item;
+import hudson.model.Queue.Task;
+import hudson.tasks.Mailer.UserProperty;
+import jenkins.model.Jenkins;
 
 @ExportedBean(defaultVisibility = 999)
 public class LockableResource extends AbstractDescribableImpl<LockableResource> implements Serializable {
@@ -59,7 +52,7 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 	private String description = "";
 	private String labels = "";
 	private String reservedBy = null;
-	private String uid = null;
+	private String selfLink = null;
 
 
 	private long queueItemId = NOT_QUEUED;
@@ -116,8 +109,8 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 	}
 	
 	@DataBoundSetter
-	public void setUid(String uid) {
-		this.uid = uid;
+	public void setSelfLink(String selfLink) {
+		this.selfLink = selfLink;
 	}
 
 	@Exported
@@ -136,8 +129,8 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 	}
 	
 	@Exported
-	public String getUid() {
-		return uid;
+	public String getSelfLink() {
+		return selfLink;
 	}
 
 	public boolean isValidLabel(String candidate, Map<String, Object> params) {
@@ -186,22 +179,11 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 	@Exported
 	public boolean isReserved() {	
 		
-		StratOSControllerAPI stratosAPI = LockableResourcesManager.get().getControllerAPI();
-		List<Objective> reservationObjectives = stratosAPI.objectives().getByType("SUDS/1.0/reservation");
-		String selfUid = getUid();
-		
-		if(reservationObjectives.isEmpty()){
-			return reservedBy != null;
-		}else{			
-			for(Objective current : reservationObjectives){
-				List<String> governors = current.getGovernors();
-				for (String currentGov : governors){
-					String currentGovUid = LockableResourcesManager.getUidFromSelfLink(currentGov);
-					if(currentGovUid.equals(selfUid)){
-						return true;
-					}
-				}
-			}
+		List<LockableResource> localResource = LockableResourcesManager.get().getlocalResources();
+
+		// If this is a stratos resource check to see if there is a reservation objective
+		if (LockableResourcesManager.get().fromName(name,localResource) == null){
+			return LockableResourceStratos.isStratosResourceReserved(getSelfLink());
 		}
 		return reservedBy != null;
 	}
@@ -295,6 +277,9 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 		}
 	}
 
+	public void setBuildExternalizableId(String buildExternalizableId){
+		this.buildExternalizableId = buildExternalizableId;
+	}
 	public Task getTask() {
 		Item item = Queue.getInstance().getItem(queueItemId);
 		if (item != null) {

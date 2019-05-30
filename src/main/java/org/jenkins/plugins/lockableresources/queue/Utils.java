@@ -45,4 +45,10 @@ public class Utils {
 
 		return null;
 	}
+	
+	public static RequiredResourcesProperty getProperty(
+			Job<?, ?> project) {
+		RequiredResourcesProperty property = project.getProperty(RequiredResourcesProperty.class);
+		return property;
+		}
 }
