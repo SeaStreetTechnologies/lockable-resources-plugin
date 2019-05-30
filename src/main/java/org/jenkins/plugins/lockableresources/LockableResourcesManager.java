@@ -8,42 +8,40 @@
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 package org.jenkins.plugins.lockableresources;
 
-import edu.umd.cs.findbugs.annotations.CheckForNull;
-import hudson.Extension;
-import hudson.model.AbstractBuild;
-import hudson.model.Run;
-
 import java.io.PrintStream;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Set;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
-import jenkins.model.GlobalConfiguration;
-import jenkins.model.Jenkins;
-import net.sf.json.JSONException;
-import net.sf.json.JSONObject;
 
 import org.jenkins.plugins.lockableresources.queue.LockableResourcesStruct;
 import org.jenkins.plugins.lockableresources.queue.QueuedContextStruct;
 import org.jenkinsci.plugins.workflow.steps.StepContext;
+import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.StaplerRequest;
+import org.kohsuke.stapler.export.Exported;
 
 import com.seastreet.client.api.ClientFactory;
 import com.seastreet.client.api.StratOSControllerAPI;
-import com.seastreet.client.config.Builders;
 import com.seastreet.client.config.StratOSClientConfiguration;
 import com.seastreet.client.exception.StratOSRESTClientConfigurationException;
 import com.seastreet.stratos.dto.Objective;
 
+import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.Nullable;
+import hudson.Extension;
+import hudson.model.Run;
+import jenkins.model.GlobalConfiguration;
+import jenkins.model.Jenkins;
+import net.sf.json.JSONException;
+import net.sf.json.JSONObject;
 
 @Extension
 public class LockableResourcesManager extends GlobalConfiguration {
@@ -52,9 +50,15 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	private transient int defaultPriority;
 	@Deprecated
 	private transient String priorityParameterName;
-	private List<LockableResource> resources;
+	private List<LockableResource> stratosResources;
+	private List<LockableResource> localResources;
 
-	private StratOSControllerAPI controllerAPI;
+	private transient StratOSControllerAPI controllerAPI;
+	
+	private String stratosURL = null;
+	private String username = null;
+	private String password = null;
+	private String userId = null;
 
 	/**
 	 * Only used when this lockable resource is tried to be locked by {@link LockStep},
@@ -62,45 +66,99 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	 */
 	private List<QueuedContextStruct> queuedContexts = new ArrayList<QueuedContextStruct>();
 
-	public LockableResourcesManager() {
+public LockableResourcesManager() {
+		
+		// load the config before we do anything
+		load();
+
 		StratOSClientConfiguration config;
-		try {
-			config = Builders.config().url(new URL("http://localhost:8880"))
-			                                                    .username("admin")
-			                                                    .password("admin")
-			                                                    .build();
+		String url = getStratosURL();
+		String username = getUsername();
+		String password = getPassword();
+		
+		if (url != null && username != null && password != null){
 			try {
-				controllerAPI = ClientFactory.getControllerAPI(config);
-			} catch (StratOSRESTClientConfigurationException e) {
+				config = com.seastreet.client.config.Builders.config().url(new URL(url)).username(username).password(password).build();
+				try {
+					controllerAPI = ClientFactory.getControllerAPI(config);
+				} catch (StratOSRESTClientConfigurationException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+		
+			} catch (MalformedURLException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
-		
-		} catch (MalformedURLException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
 		}
-
-		resources = new ArrayList<LockableResource>();
-		load();
+		stratosResources = new ArrayList<LockableResource>();
+		localResources = new ArrayList<LockableResource>();
 	}
 
 	public List<LockableResource> getResources() {
-		//return resources;
-		List<LockableResource> result = new ArrayList<LockableResource>();
-		List<Objective> objectives = controllerAPI.objectives().getByType("SUDS/1.0/lab");
-		for (Objective objective : objectives) {
-			LockableResource lab = new LockableResource(objective.getName());
-			lab.setDescription(objective.getDescription());
-			lab.setLabels(String.join(",", objective.getTags()));
-			result.add(lab);
-		}
-		return result;
-	}
+		List<LockableResource> resources = new ArrayList<LockableResource>();
 
+		List<LockableResource> sr = getStratosResources();
+		if(sr != null)
+			resources.addAll(sr);
+		resources.addAll(localResources);
+
+		return resources;
+
+	}
+	
+	
+	public List<LockableResource> getStratosResources() {
+		
+	stratosResources.clear();
+		try {
+			List<Objective> objectives = controllerAPI.objectives().getByType("SUDS/1.0/lab");
+			for (Objective objective : objectives) {
+				LockableResource lab = new LockableResource(objective.getName());
+				LOGGER.log(Level.FINE, "objectiveName: " + objective.getName());
+				if (fromSelfLink(objective.getSelf(), stratosResources) == null){
+					lab.setSelfLink(objective.getSelf());
+					lab.setDescription(objective.getDescription());
+					lab.setLabels(String.join(",", objective.getTags()));
+					LOGGER.log(Level.FINE,"lab: " + lab);
+					stratosResources.add(lab);
+					List<String> constituents = objective.getResources();
+					for (String currentConstituent : constituents){
+						Objective cc = controllerAPI.objectives().get(currentConstituent).get();
+						if(cc.getType().equals(getStratosURL()+"/genesys/objectivetype/SUDS/1.0/reservation")){
+							// Set buildExternalizableId to the build name and number so that the resource will unlock when the build is done.
+							Object buildId = cc.getProperty("buildExternalizableId");
+							if(buildId != null){
+								LOGGER.log(Level.FINE, "Setting buildExternalizableId to " + buildId.toString() + " on lab resource " + lab.getName());
+								lab.setBuildExternalizableId(buildId.toString());
+							}
+							// Set the reserve by
+							Object user = cc.getProperty("owner");
+							if(user != null){
+								LOGGER.log(Level.FINE, "Setting the user to " + user.toString() + " on lab resource " + lab.getName());
+								lab.setReservedBy(user.toString());
+							}
+						}
+					}
+				}
+			}
+
+			LOGGER.log(Level.FINE, "stratosResources: " + stratosResources);
+			return stratosResources;
+		} catch(Exception e){
+			LOGGER.log(Level.SEVERE, "Failed to get lab Resources from: " + getStratosURL() + 
+					" username: " + getUsername() + 
+					" password: " + getPassword() + 
+					" Error: " + e);
+			return null;
+		}
+		
+	}
+	
+	
 	public List<LockableResource> getResourcesFromProject(String fullName) {
 		List<LockableResource> matching = new ArrayList<LockableResource>();
-		for (LockableResource r : resources) {
+		for (LockableResource r : getResources()) {
 			String rName = r.getQueueItemProject();
 			if (rName != null && rName.equals(fullName)) {
 				matching.add(r);
@@ -111,7 +169,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
 
 	public List<LockableResource> getResourcesFromBuild(Run<?, ?> build) {
 		List<LockableResource> matching = new ArrayList<LockableResource>();
-		for (LockableResource r : resources) {
+		for (LockableResource r : getResources()) {
 			Run<?, ?> rBuild = r.getBuild();
 			if (rBuild != null && rBuild == build) {
 				matching.add(r);
@@ -129,7 +187,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	public Set<String> getAllLabels()
 	{
 		Set<String> labels = new HashSet<String>();
-		for (LockableResource r : this.resources) {
+		for (LockableResource r : this.getResources()) {
 			String rl = r.getLabels();
 			if (rl == null || "".equals(rl))
 				continue;
@@ -141,7 +199,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	public int getFreeResourceAmount(String label)
 	{
 		int free = 0;
-		for (LockableResource r : this.resources) {
+		for (LockableResource r : this.getResources()) {
 			if (r.isLocked() || r.isQueued() || r.isReserved())
 				continue;
 			if (Arrays.asList(r.getLabels().split("\\s+")).contains(label))
@@ -153,7 +211,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	public List<LockableResource> getResourcesWithLabel(String label,
 			Map<String, Object> params) {
 		List<LockableResource> found = new ArrayList<LockableResource>();
-		for (LockableResource r : this.resources) {
+		for (LockableResource r : this.getResources()) {
 			if (r.isValidLabel(label, params))
 				found.add(r);
 		}
@@ -162,8 +220,28 @@ public class LockableResourcesManager extends GlobalConfiguration {
 
 	public LockableResource fromName(String resourceName) {
 		if (resourceName != null) {
-			for (LockableResource r : resources) {
+			for (LockableResource r : getResources()) {
 				if (resourceName.equals(r.getName()))
+					return r;
+			}
+		}
+		return null;
+	}
+	
+	public LockableResource fromName(String resourceName, List<LockableResource> resourceList) {
+		if (resourceName != null) {
+			for (LockableResource r : resourceList) {
+				if (resourceName.equals(r.getName()))
+					return r;
+			}
+		}
+		return null;
+	}
+	
+	public LockableResource fromSelfLink(String resourceSelfLink, List<LockableResource> resourceList) {
+		if (resourceSelfLink != null) {
+			for (LockableResource r : resourceList) {
+				if (resourceSelfLink.equals(r.getSelfLink()))
 					return r;
 			}
 		}
@@ -218,7 +296,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
 			        "Waiting for correct amount: {2}.",
 			        new Object[]{queueItemProject, selected.size(), required_amount});
 			// just to be sure, clean up
-			for (LockableResource x : resources) {
+			for (LockableResource x : getResources()) {
 				if (x.getQueueItemProject() != null &&
 				    x.getQueueItemProject().equals(queueItemProject))
 					x.unqueue();
@@ -238,7 +316,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	                                            String project,
 	                                            long taskId,
 	                                            Logger log) {
-		for (LockableResource r : resources) {
+		for (LockableResource r : getResources()) {
 			// This project might already have something in queue
 			String rProject = r.getQueueItemProject();
 			if (rProject != null && rProject.equals(project)) {
@@ -277,6 +355,11 @@ public class LockableResourcesManager extends GlobalConfiguration {
 			for (LockableResource r : resources) {
 				r.unqueue();
 				r.setBuild(build);
+				// If this is a stratos resource we need to create a reservation objective.
+				if (fromSelfLink(r.getSelfLink(), stratosResources) !=null){
+					LOGGER.log(Level.FINE, "Setting lock for: " + r.getSelfLink());
+					LockableResourceStratos.createStratosReservation(r);
+				}
 			}
 			if (context != null) {
 				// since LockableResource contains transient variables, they cannot be correctly serialized
@@ -294,12 +377,16 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	
 	private synchronized void freeResources(List<String> unlockResourceNames, @Nullable Run<?, ?> build) {
 		for (String unlockResourceName : unlockResourceNames) {
-			for (LockableResource resource : this.resources) {
+			for (LockableResource resource : this.getResources()) {
 				if (resource.getName().equals(unlockResourceName)) {
 					if (build == null || (resource.getBuild() != null && build.getExternalizableId().equals(resource.getBuild().getExternalizableId()))) {
 						// No more contexts, unlock resource
 						resource.unqueue();
 						resource.setBuild(null);
+						// If the resource is on the stratos server delete the reservation objective
+						if (fromSelfLink(resource.getSelfLink(), stratosResources) !=null){
+							LockableResourceStratos.deleteStratosReservation(resource);
+						}
 					}
 				}
 			}
@@ -450,6 +537,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	 * Creates the resource if it does not exist.
 	 */
 	public synchronized boolean createResource(String name) {
+		
 		LockableResource existent = fromName(name);
 		if (existent == null) {
 			getResources().add(new LockableResource(name));
@@ -478,6 +566,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
 		}
 		for (LockableResource r : resources) {
 			r.setReservedBy(userName);
+			LockableResourceStratos.createStratosReservation(r, userName);
 		}
 		save();
 		return true;
@@ -486,6 +575,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	public synchronized void unreserve(List<LockableResource> resources) {
 		for (LockableResource r : resources) {
 			r.unReserve();
+			LockableResourceStratos.deleteStratosReservation(r);
 		}
 		save();
 	}
@@ -505,17 +595,28 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	@Override
 	public boolean configure(StaplerRequest req, JSONObject json)
 			throws FormException {
+		localResources.clear();
+
 		try {
 			List<LockableResource> newResouces = req.bindJSONToList(
-					LockableResource.class, json.get("resources"));
+					LockableResource.class, json.get("localResources"));
+
 			for (LockableResource r : newResouces) {
 				LockableResource old = fromName(r.getName());
 				if (old != null) {
 					r.setBuild(old.getBuild());
 					r.setQueued(r.getQueueItemId(), r.getQueueItemProject());
 				}
+				if (fromSelfLink(r.getSelfLink(), stratosResources) == null){
+					// add any resources that is not part of the stratos resource list
+					localResources.add(r);
+				}
 			}
-			resources = newResouces;
+						   
+			stratosURL = json.get("stratosURL").toString();
+			username = json.getString("username").toString();
+			password = json.getString("password").toString();
+			
 			save();
 			return true;
 		} catch (JSONException e) {
@@ -616,6 +717,44 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	public static LockableResourcesManager get() {
 		return (LockableResourcesManager) Jenkins.getInstance()
 				.getDescriptorOrDie(LockableResourcesManager.class);
+	}
+	@DataBoundSetter
+	public void setStratosURL(String stratosURL) {
+		this.stratosURL = stratosURL;
+	}
+	
+	@DataBoundSetter
+	public void setUsername(String username) {
+		this.username = username;
+	}
+	
+	@DataBoundSetter
+	public void setPassword(String password) {
+		this.password = password;
+	}
+	
+	@Exported
+	public String getStratosURL() {
+		return stratosURL;
+	}
+	
+	@Exported
+	public String getUsername() {
+		return username;
+	}
+	
+	@Exported
+	public String getPassword() {
+		return password;
+	}
+	
+	@Exported
+	public List<LockableResource> getlocalResources() {
+		return localResources;
+	}
+	
+	public StratOSControllerAPI getControllerAPI(){
+		return controllerAPI;
 	}
 
 	private static final Logger LOGGER = Logger.getLogger(LockableResourcesManager.class.getName());

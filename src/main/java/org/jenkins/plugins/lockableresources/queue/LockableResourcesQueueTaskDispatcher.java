@@ -8,22 +8,25 @@
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 package org.jenkins.plugins.lockableresources.queue;
 
-import hudson.Extension;
-import hudson.matrix.MatrixConfiguration;
-import hudson.matrix.MatrixProject;
-import hudson.model.AbstractProject;
-import hudson.model.Job;
-import hudson.model.Queue;
-import hudson.model.queue.QueueTaskDispatcher;
-import hudson.model.queue.CauseOfBlockage;
-
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
 
 import org.jenkins.plugins.lockableresources.LockableResource;
+import org.jenkins.plugins.lockableresources.LockableResourceStratos;
 import org.jenkins.plugins.lockableresources.LockableResourcesManager;
+import org.jenkins.plugins.lockableresources.RequiredResourcesProperty;
+
+import com.seastreet.client.api.StratOSControllerAPI;
+
+import hudson.Extension;
+import hudson.matrix.MatrixConfiguration;
+import hudson.matrix.MatrixProject;
+import hudson.model.Job;
+import hudson.model.Queue;
+import hudson.model.queue.CauseOfBlockage;
+import hudson.model.queue.QueueTaskDispatcher;
 
 @Extension
 public class LockableResourcesQueueTaskDispatcher extends QueueTaskDispatcher {
@@ -40,8 +43,24 @@ public class LockableResourcesQueueTaskDispatcher extends QueueTaskDispatcher {
 
 		Job<?, ?> project = Utils.getProject(item);
 		if (project == null)
-			return null;
-
+			return null;	
+		List<LockableResource> localResource = LockableResourcesManager.get().getlocalResources();
+		List<LockableResource> allResource = LockableResourcesManager.get().getResources();
+		StratOSControllerAPI stratosAPI = LockableResourcesManager.get().getControllerAPI();
+		
+		RequiredResourcesProperty property = Utils.getProperty(project);
+		String name = property.getResourceNames();
+		
+		// If stratos is healthy but the resource is not a valid resource
+		if(LockableResourceStratos.isStratosHealthy(stratosAPI) && LockableResourcesManager.get().fromName(name,allResource) == null){
+			LOGGER.fine(name + " is not a lockable resource");
+			return new BecauseResourcesLocked("Could not find resource with name: " + name);	
+		} // If stratos is not healthy and the resource is not in local resources
+		else if (!LockableResourceStratos.isStratosHealthy(stratosAPI) && LockableResourcesManager.get().fromName(name,localResource) == null){
+			LOGGER.fine(stratosAPI.getUrl() + " is not healthy. Unable to lock " + name);
+			return new BecauseResourcesLocked(stratosAPI.getUrl() + " is not healthy. Unable to lock " + name);
+		}
+		
 		LockableResourcesStruct resources = Utils.requiredResources(project);
 		if (resources == null ||
 			(resources.required.isEmpty() && resources.label.isEmpty())) {
@@ -96,13 +115,21 @@ public class LockableResourcesQueueTaskDispatcher extends QueueTaskDispatcher {
 	public static class BecauseResourcesLocked extends CauseOfBlockage {
 
 		private final LockableResourcesStruct rscStruct;
+		private String reason = null;
 
 		public BecauseResourcesLocked(LockableResourcesStruct r) {
 			this.rscStruct = r;
 		}
+		
+		public BecauseResourcesLocked(String reason) {
+			rscStruct = null;
+			this.reason = reason;
+		}
 
 		@Override
 		public String getShortDescription() {
+			if(reason!=null)
+				return reason;
 			if (this.rscStruct.label.isEmpty())
 				return "Waiting for resources " + rscStruct.required.toString();
 			else

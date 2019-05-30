@@ -8,34 +8,15 @@
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 package org.jenkins.plugins.lockableresources;
 
-import groovy.lang.Binding;
-import groovy.lang.GroovyShell;
-import hudson.Extension;
-import hudson.Util;
-import hudson.model.AbstractDescribableImpl;
-import hudson.model.AbstractBuild;
-import hudson.model.Descriptor;
-import hudson.model.Queue;
-import hudson.model.Run;
-import hudson.model.Queue.Item;
-import hudson.model.Queue.Task;
-import hudson.model.User;
-import hudson.tasks.Mailer.UserProperty;
-
-import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import jenkins.model.Jenkins;
-
 import org.jenkinsci.plugins.workflow.steps.StepContext;
-import org.jinterop.winreg.IJIWinReg.saveFile;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.export.Exported;
@@ -44,6 +25,20 @@ import org.kohsuke.stapler.export.ExportedBean;
 import com.infradna.tool.bridge_method_injector.WithBridgeMethods;
 
 import edu.umd.cs.findbugs.annotations.CheckForNull;
+import groovy.lang.Binding;
+import groovy.lang.GroovyShell;
+import hudson.Extension;
+import hudson.Util;
+import hudson.model.AbstractBuild;
+import hudson.model.AbstractDescribableImpl;
+import hudson.model.Descriptor;
+import hudson.model.Queue;
+import hudson.model.Run;
+import hudson.model.User;
+import hudson.model.Queue.Item;
+import hudson.model.Queue.Task;
+import hudson.tasks.Mailer.UserProperty;
+import jenkins.model.Jenkins;
 
 @ExportedBean(defaultVisibility = 999)
 public class LockableResource extends AbstractDescribableImpl<LockableResource> implements Serializable {
@@ -57,6 +52,8 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 	private String description = "";
 	private String labels = "";
 	private String reservedBy = null;
+	private String selfLink = null;
+
 
 	private long queueItemId = NOT_QUEUED;
 	private String queueItemProject = null;
@@ -85,7 +82,9 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 	@DataBoundConstructor
 	public LockableResource(String name) {
 		this.name = name;
+
 	}
+	
 
 	private Object readResolve() {
 		if (queuedContexts == null) { // this field was added after the initial version if this class
@@ -108,6 +107,11 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 	public void setLabels(String labels) {
 		this.labels = labels;
 	}
+	
+	@DataBoundSetter
+	public void setSelfLink(String selfLink) {
+		this.selfLink = selfLink;
+	}
 
 	@Exported
 	public String getName() {
@@ -122,6 +126,11 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 	@Exported
 	public String getLabels() {
 		return labels;
+	}
+	
+	@Exported
+	public String getSelfLink() {
+		return selfLink;
 	}
 
 	public boolean isValidLabel(String candidate, Map<String, Object> params) {
@@ -168,7 +177,14 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 	}
 
 	@Exported
-	public boolean isReserved() {
+	public boolean isReserved() {	
+		
+		List<LockableResource> localResource = LockableResourcesManager.get().getlocalResources();
+
+		// If this is a stratos resource check to see if there is a reservation objective
+		if (LockableResourcesManager.get().fromName(name,localResource) == null){
+			return LockableResourceStratos.isStratosResourceReserved(getSelfLink());
+		}
 		return reservedBy != null;
 	}
 
@@ -261,6 +277,9 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 		}
 	}
 
+	public void setBuildExternalizableId(String buildExternalizableId){
+		this.buildExternalizableId = buildExternalizableId;
+	}
 	public Task getTask() {
 		Item item = Queue.getInstance().getItem(queueItemId);
 		if (item != null) {
@@ -304,6 +323,7 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 	}
 
 	public void unReserve() {
+		// Unreserver the lab from stratos
 		this.reservedBy = null;
 	}
 
