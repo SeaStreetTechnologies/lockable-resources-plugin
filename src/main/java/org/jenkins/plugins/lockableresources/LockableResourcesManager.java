@@ -50,7 +50,6 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	private transient int defaultPriority;
 	@Deprecated
 	private transient String priorityParameterName;
-	private List<LockableResource> stratosResources;
 	private List<LockableResource> localResources;
 
 	private transient StratOSControllerAPI controllerAPI;
@@ -58,7 +57,6 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	private String stratosURL = null;
 	private String username = null;
 	private String password = null;
-	private String userId = null;
 
 	/**
 	 * Only used when this lockable resource is tried to be locked by {@link LockStep},
@@ -91,68 +89,19 @@ public LockableResourcesManager() {
 				e.printStackTrace();
 			}
 		}
-		stratosResources = new ArrayList<LockableResource>();
 		localResources = new ArrayList<LockableResource>();
 	}
 
 	public List<LockableResource> getResources() {
 		List<LockableResource> resources = new ArrayList<LockableResource>();
 
-		List<LockableResource> sr = getStratosResources();
+		List<LockableResourceStratos> sr = LockableResourceStratos.getStratosResources();
 		if(sr != null)
 			resources.addAll(sr);
 		resources.addAll(localResources);
 
 		return resources;
 
-	}
-	
-	
-	public List<LockableResource> getStratosResources() {
-		
-	stratosResources.clear();
-		try {
-			List<Objective> objectives = controllerAPI.objectives().getByType("SUDS/1.0/lab");
-			for (Objective objective : objectives) {
-				LockableResource lab = new LockableResource(objective.getName());
-				LOGGER.log(Level.FINE, "objectiveName: " + objective.getName());
-				if (fromSelfLink(objective.getSelf(), stratosResources) == null){
-					lab.setSelfLink(objective.getSelf());
-					lab.setDescription(objective.getDescription());
-					lab.setLabels(String.join(",", objective.getTags()));
-					LOGGER.log(Level.FINE,"lab: " + lab);
-					stratosResources.add(lab);
-					List<String> constituents = objective.getResources();
-					for (String currentConstituent : constituents){
-						Objective cc = controllerAPI.objectives().get(currentConstituent).get();
-						if(cc.getType().equals(getStratosURL()+"/genesys/objectivetype/SUDS/1.0/reservation")){
-							// Set buildExternalizableId to the build name and number so that the resource will unlock when the build is done.
-							Object buildId = cc.getProperty("buildExternalizableId");
-							if(buildId != null){
-								LOGGER.log(Level.FINE, "Setting buildExternalizableId to " + buildId.toString() + " on lab resource " + lab.getName());
-								lab.setBuildExternalizableId(buildId.toString());
-							}
-							// Set the reserve by
-							Object user = cc.getProperty("owner");
-							if(user != null){
-								LOGGER.log(Level.FINE, "Setting the user to " + user.toString() + " on lab resource " + lab.getName());
-								lab.setReservedBy(user.toString());
-							}
-						}
-					}
-				}
-			}
-
-			LOGGER.log(Level.FINE, "stratosResources: " + stratosResources);
-			return stratosResources;
-		} catch(Exception e){
-			LOGGER.log(Level.SEVERE, "Failed to get lab Resources from: " + getStratosURL() + 
-					" username: " + getUsername() + 
-					" password: " + getPassword() + 
-					" Error: " + e);
-			return null;
-		}
-		
 	}
 	
 	
@@ -232,16 +181,6 @@ public LockableResourcesManager() {
 		if (resourceName != null) {
 			for (LockableResource r : resourceList) {
 				if (resourceName.equals(r.getName()))
-					return r;
-			}
-		}
-		return null;
-	}
-	
-	public LockableResource fromSelfLink(String resourceSelfLink, List<LockableResource> resourceList) {
-		if (resourceSelfLink != null) {
-			for (LockableResource r : resourceList) {
-				if (resourceSelfLink.equals(r.getSelfLink()))
 					return r;
 			}
 		}
@@ -355,11 +294,6 @@ public LockableResourcesManager() {
 			for (LockableResource r : resources) {
 				r.unqueue();
 				r.setBuild(build);
-				// If this is a stratos resource we need to create a reservation objective.
-				if (fromSelfLink(r.getSelfLink(), stratosResources) !=null){
-					LOGGER.log(Level.FINE, "Setting lock for: " + r.getSelfLink());
-					LockableResourceStratos.createStratosReservation(r);
-				}
 			}
 			if (context != null) {
 				// since LockableResource contains transient variables, they cannot be correctly serialized
@@ -383,10 +317,6 @@ public LockableResourcesManager() {
 						// No more contexts, unlock resource
 						resource.unqueue();
 						resource.setBuild(null);
-						// If the resource is on the stratos server delete the reservation objective
-						if (fromSelfLink(resource.getSelfLink(), stratosResources) !=null){
-							LockableResourceStratos.deleteStratosReservation(resource);
-						}
 					}
 				}
 			}
@@ -566,7 +496,6 @@ public LockableResourcesManager() {
 		}
 		for (LockableResource r : resources) {
 			r.setReservedBy(userName);
-			LockableResourceStratos.createStratosReservation(r, userName);
 		}
 		save();
 		return true;
@@ -575,7 +504,6 @@ public LockableResourcesManager() {
 	public synchronized void unreserve(List<LockableResource> resources) {
 		for (LockableResource r : resources) {
 			r.unReserve();
-			LockableResourceStratos.deleteStratosReservation(r);
 		}
 		save();
 	}
@@ -607,7 +535,7 @@ public LockableResourcesManager() {
 					r.setBuild(old.getBuild());
 					r.setQueued(r.getQueueItemId(), r.getQueueItemProject());
 				}
-				if (fromSelfLink(r.getSelfLink(), stratosResources) == null){
+				if (fromName(r.getName(), getResources()) == null){
 					// add any resources that is not part of the stratos resource list
 					localResources.add(r);
 				}
@@ -751,6 +679,11 @@ public LockableResourcesManager() {
 	@Exported
 	public List<LockableResource> getlocalResources() {
 		return localResources;
+	}
+	
+	@Exported
+	public List<LockableResourceStratos> getStratosResources() {
+		return LockableResourceStratos.getStratosResources();
 	}
 	
 	public StratOSControllerAPI getControllerAPI(){
