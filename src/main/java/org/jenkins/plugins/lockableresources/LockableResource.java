@@ -177,14 +177,7 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 	}
 
 	@Exported
-	public boolean isReserved() {	
-		
-		List<LockableResource> localResource = LockableResourcesManager.get().getlocalResources();
-
-		// If this is a stratos resource check to see if there is a reservation objective
-		if (LockableResourcesManager.get().fromName(name,localResource) == null){
-			return LockableResourceStratos.isStratosResourceReserved(getSelfLink());
-		}
+	public boolean isReserved() {
 		return reservedBy != null;
 	}
 
