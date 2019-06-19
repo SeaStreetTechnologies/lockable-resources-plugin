@@ -80,13 +80,11 @@ public LockableResourcesManager() {
 				try {
 					controllerAPI = ClientFactory.getControllerAPI(config);
 				} catch (StratOSRESTClientConfigurationException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
+					LOGGER.log(Level.FINEST, "Caught Stratos REST client configuration exception: " + e);
 				}
 		
 			} catch (MalformedURLException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+				LOGGER.log(Level.FINEST, "Caught Malformed URL exception: " + e);
 			}
 		}
 		localResources = new ArrayList<LockableResource>();
