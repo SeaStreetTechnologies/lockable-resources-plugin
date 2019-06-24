@@ -46,7 +46,7 @@ public class LockableResourcesQueueTaskDispatcher extends QueueTaskDispatcher {
 			return null;	
 		List<LockableResource> localResource = LockableResourcesManager.get().getlocalResources();
 		List<LockableResource> allResource = LockableResourcesManager.get().getResources();
-		StratOSControllerAPI stratosAPI = LockableResourcesManager.get().getControllerAPI();
+		StratOSControllerAPI stratosAPI = LockableResourceStratos.getControllerAPI();
 		
 		RequiredResourcesProperty property = Utils.getProperty(project);
 		String name = property.getResourceNames();
