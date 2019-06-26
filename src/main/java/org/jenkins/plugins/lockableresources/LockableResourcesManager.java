@@ -9,8 +9,6 @@
 package org.jenkins.plugins.lockableresources;
 
 import java.io.PrintStream;
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -28,16 +26,11 @@ import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.StaplerRequest;
 import org.kohsuke.stapler.export.Exported;
 
-import com.seastreet.client.api.ClientFactory;
-import com.seastreet.client.api.StratOSControllerAPI;
-import com.seastreet.client.config.StratOSClientConfiguration;
-import com.seastreet.client.exception.StratOSRESTClientConfigurationException;
-import com.seastreet.stratos.dto.Objective;
-
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.Nullable;
 import hudson.Extension;
 import hudson.model.Run;
+import hudson.util.Secret;
 import jenkins.model.GlobalConfiguration;
 import jenkins.model.Jenkins;
 import net.sf.json.JSONException;
@@ -51,12 +44,10 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	@Deprecated
 	private transient String priorityParameterName;
 	private List<LockableResource> localResources;
-
-	private transient StratOSControllerAPI controllerAPI;
 	
-	private String stratosURL = null;
-	private String username = null;
-	private String password = null;
+	private String stratosURL;
+	private String username;
+	private String password;
 
 	/**
 	 * Only used when this lockable resource is tried to be locked by {@link LockStep},
@@ -64,30 +55,13 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	 */
 	private List<QueuedContextStruct> queuedContexts = new ArrayList<QueuedContextStruct>();
 
-public LockableResourcesManager() {
-		
-		// load the config before we do anything
-		load();
+	public LockableResourcesManager() {
 
-		StratOSClientConfiguration config;
-		String url = getStratosURL();
-		String username = getUsername();
-		String password = getPassword();
-		
-		if (url != null && username != null && password != null){
-			try {
-				config = com.seastreet.client.config.Builders.config().url(new URL(url)).username(username).password(password).build();
-				try {
-					controllerAPI = ClientFactory.getControllerAPI(config);
-				} catch (StratOSRESTClientConfigurationException e) {
-					LOGGER.log(Level.FINEST, "Caught Stratos REST client configuration exception: " + e);
-				}
-		
-			} catch (MalformedURLException e) {
-				LOGGER.log(Level.FINEST, "Caught Malformed URL exception: " + e);
-			}
-		}
 		localResources = new ArrayList<LockableResource>();
+		stratosURL = new String();
+		username = new String();
+		password = new String();
+		load();		
 	}
 
 	public List<LockableResource> getResources() {
@@ -538,10 +512,11 @@ public LockableResourcesManager() {
 					localResources.add(r);
 				}
 			}
-						   
+
+			// Get the stratos config
 			stratosURL = json.get("stratosURL").toString();
 			username = json.getString("username").toString();
-			password = json.getString("password").toString();
+			password = Secret.fromString(json.getString("password").toString()).getEncryptedValue();
 			
 			save();
 			return true;
@@ -644,6 +619,17 @@ public LockableResourcesManager() {
 		return (LockableResourcesManager) Jenkins.getInstance()
 				.getDescriptorOrDie(LockableResourcesManager.class);
 	}
+	
+	@Exported
+	public List<LockableResource> getlocalResources() {
+		return localResources;
+	}
+	
+	@Exported
+	public List<LockableResourceStratos> getStratosResources() {
+		return LockableResourceStratos.getStratosResources();
+	}
+	
 	@DataBoundSetter
 	public void setStratosURL(String stratosURL) {
 		this.stratosURL = stratosURL;
@@ -672,22 +658,8 @@ public LockableResourcesManager() {
 	@Exported
 	public String getPassword() {
 		return password;
-	}
+	}	
 	
-	@Exported
-	public List<LockableResource> getlocalResources() {
-		return localResources;
-	}
-	
-	@Exported
-	public List<LockableResourceStratos> getStratosResources() {
-		return LockableResourceStratos.getStratosResources();
-	}
-	
-	public StratOSControllerAPI getControllerAPI(){
-		return controllerAPI;
-	}
-
 	private static final Logger LOGGER = Logger.getLogger(LockableResourcesManager.class.getName());
 
 }

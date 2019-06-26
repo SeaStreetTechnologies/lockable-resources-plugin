@@ -1,5 +1,7 @@
 package org.jenkins.plugins.lockableresources;
 
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -11,7 +13,10 @@ import java.util.logging.Logger;
 
 import org.jenkins.plugins.lockableresources.queue.LockRunListener;
 
+import com.seastreet.client.api.ClientFactory;
 import com.seastreet.client.api.StratOSControllerAPI;
+import com.seastreet.client.config.StratOSClientConfiguration;
+import com.seastreet.client.exception.StratOSRESTClientConfigurationException;
 import com.seastreet.stratos.dto.Objective;
 import com.seastreet.stratos.dto.builders.Builders;
 
@@ -19,6 +24,7 @@ import hudson.Extension;
 import hudson.model.Descriptor;
 import hudson.model.Run;
 import hudson.model.User;
+import hudson.util.Secret;
 
 public class LockableResourceStratos extends LockableResource {
 
@@ -89,7 +95,7 @@ public class LockableResourceStratos extends LockableResource {
 	 */
 	private void createStratosReservation(LockableResource resource, String username){
 		
-		StratOSControllerAPI stratosAPI = LockableResourcesManager.get().getControllerAPI();
+		StratOSControllerAPI stratosAPI = getControllerAPI();
 		Map<String,Object> props = new HashMap<>();
 		String userId = User.get(username).getId();
 		LOGGER.log(Level.FINE,"The userid for " + username +" is " + userId);
@@ -112,7 +118,7 @@ public class LockableResourceStratos extends LockableResource {
 	 */
 	private void deleteStratosReservation(LockableResource resource){
 	
-		StratOSControllerAPI stratosAPI = LockableResourcesManager.get().getControllerAPI();
+		StratOSControllerAPI stratosAPI = getControllerAPI();
 		Optional<Objective> lab = stratosAPI.objectives().get(resource.getSelfLink());
 		// get the reservation objective's URL from the property that is set on the lab
 		Object reservationUrl = lab.get().getProperty("currentReservationUrl");
@@ -168,7 +174,7 @@ public class LockableResourceStratos extends LockableResource {
 	 */
 	private boolean isStratosResourceReserved(String selfLink){
 		
-		StratOSControllerAPI stratosAPI = LockableResourcesManager.get().getControllerAPI();
+		StratOSControllerAPI stratosAPI = getControllerAPI();
 		Optional<Objective> lab = stratosAPI.objectives().get(selfLink);
 		// Check to see if the property on the lab is set for the reservation
 		Object reservationUrl = lab.get().getProperty("currentReservationUrl");
@@ -186,7 +192,7 @@ public class LockableResourceStratos extends LockableResource {
 	public static List<LockableResourceStratos> getStratosResources() {
 		
 	 List<LockableResourceStratos> stratosResources = new ArrayList<LockableResourceStratos>();
-	 StratOSControllerAPI controllerAPI = LockableResourcesManager.get().getControllerAPI();
+	 StratOSControllerAPI controllerAPI = getControllerAPI();
 
 		try {
 			// Get all of the lab objectives
@@ -227,7 +233,7 @@ public class LockableResourceStratos extends LockableResource {
 			return stratosResources;
 
 		} catch(Exception e){
-			LOGGER.log(Level.SEVERE, "Failed to get lab resources from " + controllerAPI.getUrl() + " Error: " + e);
+			LOGGER.log(Level.SEVERE, "Failed to get lab resources. Error: " + e);
 			return null;
 		}
 		
@@ -247,6 +253,32 @@ public class LockableResourceStratos extends LockableResource {
 			}
 		}
 		return null;
+	}
+	
+	public static StratOSControllerAPI getControllerAPI(){
+		
+		StratOSClientConfiguration config;
+		
+		String url = LockableResourcesManager.get().getStratosURL();
+		String username = LockableResourcesManager.get().getUsername();
+		String password = Secret.toString(Secret.decrypt(LockableResourcesManager.get().getPassword()));
+		StratOSControllerAPI controllerAPI = null;
+	
+		if (url != null && username != null && password != null){
+			try {
+				config = com.seastreet.client.config.Builders.config().url(new URL(url)).username(username).password(password).build();
+				try {
+					controllerAPI = ClientFactory.getControllerAPI(config);
+				} catch (StratOSRESTClientConfigurationException e) {
+					LOGGER.log(Level.FINEST, "Caught Stratos REST client configuration exception: " + e);
+				}
+		
+			} catch (MalformedURLException e) {
+				LOGGER.log(Level.FINEST, "Caught Malformed URL exception: " + e);
+			}
+		}
+		
+		return controllerAPI;
 	}
 	
 	
