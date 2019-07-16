@@ -52,7 +52,8 @@ public class LockableResourceStratos extends LockableResource {
 	public void unReserve() {
 		super.unReserve();
 		// delete the reservation objective
-		deleteStratosReservation(this);
+		if(isStratosResourceReserved(getSelfLink()))
+			deleteStratosReservation(this);
 	}
 
 	/**
@@ -263,10 +264,14 @@ public class LockableResourceStratos extends LockableResource {
 		String username = LockableResourcesManager.get().getUsername();
 		String password = Secret.toString(Secret.decrypt(LockableResourcesManager.get().getPassword()));
 		StratOSControllerAPI controllerAPI = null;
+		String ssProtocol = "";
+		if (url.startsWith("https://")){
+			ssProtocol = "SSL";
+		}
 	
 		if (url != null && username != null && password != null){
 			try {
-				config = com.seastreet.client.config.Builders.config().url(new URL(url)).username(username).password(password).build();
+				config = com.seastreet.client.config.Builders.config().url(new URL(url)).username(username).password(password).ssProtocol(ssProtocol).build();
 				try {
 					controllerAPI = ClientFactory.getControllerAPI(config);
 				} catch (StratOSRESTClientConfigurationException e) {
