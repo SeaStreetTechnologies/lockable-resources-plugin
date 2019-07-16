@@ -260,18 +260,21 @@ public class LockableResourceStratos extends LockableResource {
 		
 		StratOSClientConfiguration config;
 		
-		String url = LockableResourcesManager.get().getStratosURL();
+		String stratosUrl = LockableResourcesManager.get().getStratosURL();
 		String username = LockableResourcesManager.get().getUsername();
 		String password = Secret.toString(Secret.decrypt(LockableResourcesManager.get().getPassword()));
 		StratOSControllerAPI controllerAPI = null;
+		URL url = null;
 		String ssProtocol = "";
-		if (url.startsWith("https://")){
-			ssProtocol = "SSL";
-		}
 	
-		if (url != null && username != null && password != null){
+		if (stratosUrl != null && username != null && password != null){																													
 			try {
-				config = com.seastreet.client.config.Builders.config().url(new URL(url)).username(username).password(password).ssProtocol(ssProtocol).build();
+				url = new URL(stratosUrl);
+				// Set the ssProtocol to SSL when we are using SSL
+				if(url.getProtocol().equals("https"))
+					ssProtocol = "SSL";
+				
+				config = com.seastreet.client.config.Builders.config().url(url).username(username).password(password).ssProtocol(ssProtocol).build();
 				try {
 					controllerAPI = ClientFactory.getControllerAPI(config);
 				} catch (StratOSRESTClientConfigurationException e) {
