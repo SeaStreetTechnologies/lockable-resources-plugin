@@ -49,6 +49,9 @@ public class LockableResourcesQueueTaskDispatcher extends QueueTaskDispatcher {
 		StratOSControllerAPI stratosAPI = LockableResourceStratos.getControllerAPI();
 		
 		RequiredResourcesProperty property = Utils.getProperty(project);
+		// If the project does not require any lockable resources then return null
+		if(property == null)
+			return null;
 		String name = property.getResourceNames();
 		
 		// If stratos is healthy but the resource is not a valid resource
