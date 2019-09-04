@@ -81,13 +81,8 @@ public class LockableResourceStratos extends LockableResource {
 	 * @param resource
 	 */
 	private void createStratosReservation(LockableResource resource){
-		// Get the user who locked this resource
-		String user = LockRunListener.getUserId();
-		// If there are no users then Jenkins kicked off the build
-		if(user ==  null)
-			user = "Jenkins";
-		LOGGER.log(Level.FINE, "Creating reservation on:  " + resource + " for user: " + user);
-		createStratosReservation(resource, user);	
+		LOGGER.log(Level.FINE, "Creating reservation on:  " + resource + " for user: Jenkins");
+		createStratosReservation(resource, "Jenkins");	
 	}
 	/**
 	 * Creates a stratos reservation objective owned by the user who locked the resource
@@ -101,6 +96,8 @@ public class LockableResourceStratos extends LockableResource {
 		String userId = User.get(username).getId();
 		LOGGER.log(Level.FINE,"The userid for " + username +" is " + userId);
 		props.put("owner", userId);
+		if(userId.equals("Jenkins"))
+			props.put("end", "December 31, 9999 6:00:00 PM EDT");
 		if(resource.getBuildName() !=  null)
 			props.put("buildExternalizableId", resource.getBuildName().replaceAll("\\s", ""));
 		List<String> governors = Arrays.asList(resource.getSelfLink());
