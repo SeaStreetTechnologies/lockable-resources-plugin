@@ -42,7 +42,7 @@ public class LockableResourceStratos extends LockableResource {
 		super.setReservedBy(userName);
 		// only create the reservation if one is not there
 		if(!this.isReserved())
-			createStratosReservation(this,userName);
+			createStratosReservation(this,userName,false);
 	}
 
 	/**
@@ -87,20 +87,24 @@ public class LockableResourceStratos extends LockableResource {
 		if(user ==  null)
 			user = "Jenkins";
 		LOGGER.log(Level.FINE, "Creating reservation on:  " + resource + " for user: " + user);
-		createStratosReservation(resource, user);	
+		createStratosReservation(resource, user, true);	
 	}
 	/**
 	 * Creates a stratos reservation objective owned by the user who locked the resource
 	 * @param resource
 	 * @param username
 	 */
-	private void createStratosReservation(LockableResource resource, String username){
+	private void createStratosReservation(LockableResource resource, String username, boolean reserveIndefinitely){
 		
 		StratOSControllerAPI stratosAPI = getControllerAPI();
 		Map<String,Object> props = new HashMap<>();
 		String userId = User.get(username).getId();
 		LOGGER.log(Level.FINE,"The userid for " + username +" is " + userId);
 		props.put("owner", userId);
+		if(reserveIndefinitely){
+			LOGGER.log(Level.FINE, "Locking " + resource + " indefinitely");
+			props.put("end", "December 31, 9999 6:00:00 PM EDT");
+		}
 		if(resource.getBuildName() !=  null)
 			props.put("buildExternalizableId", resource.getBuildName().replaceAll("\\s", ""));
 		List<String> governors = Arrays.asList(resource.getSelfLink());
