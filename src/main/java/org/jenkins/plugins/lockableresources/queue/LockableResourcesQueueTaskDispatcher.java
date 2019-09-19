@@ -52,16 +52,20 @@ public class LockableResourcesQueueTaskDispatcher extends QueueTaskDispatcher {
 		// If the project does not require any lockable resources then return null
 		if(property == null)
 			return null;
-		String name = property.getResourceNames();
-		
-		// If stratos is healthy but the resource is not a valid resource
-		if(LockableResourceStratos.isStratosHealthy(stratosAPI) && LockableResourcesManager.get().fromName(name,allResource) == null){
-			LOGGER.fine(name + " is not a lockable resource");
-			return new BecauseResourcesLocked("Could not find resource with name: " + name);	
-		} // If stratos is not healthy and the resource is not in local resources
-		else if (!LockableResourceStratos.isStratosHealthy(stratosAPI) && LockableResourcesManager.get().fromName(name,localResource) == null){
-			LOGGER.fine(stratosAPI.getUrl() + " is not healthy. Unable to lock " + name);
-			return new BecauseResourcesLocked(stratosAPI.getUrl() + " is not healthy. Unable to lock " + name);
+		String names = property.getResourceNames();
+		// Loop through all the resources to verify they are valid.
+		for (String name : names.split(" ")) {
+			LOGGER.fine("Verifying that " + name + " is a valid resource");
+			
+			// If stratos is healthy but the resource is not a valid resource
+			if(LockableResourceStratos.isStratosHealthy(stratosAPI) && LockableResourcesManager.get().fromName(name,allResource) == null){
+				LOGGER.fine(name + " is not a lockable resource");
+				return new BecauseResourcesLocked("Could not find resource with name: " + name);	
+			} // If stratos is not healthy and the resource is not in local resources
+			else if (!LockableResourceStratos.isStratosHealthy(stratosAPI) && LockableResourcesManager.get().fromName(name,localResource) == null){
+				LOGGER.fine(stratosAPI.getUrl() + " is not healthy. Unable to lock " + name);
+				return new BecauseResourcesLocked(stratosAPI.getUrl() + " is not healthy. Unable to lock " + name);
+			}
 		}
 		
 		LockableResourcesStruct resources = Utils.requiredResources(project);
