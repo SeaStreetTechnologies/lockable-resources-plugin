@@ -150,13 +150,14 @@ public class LockableResourceStratos extends LockableResource {
 	 * @return boolean of stratos health
 	 */
 	public static boolean isStratosHealthy(StratOSControllerAPI stratosAPI){
-		
+		String stratosUrl= null;
 		try{
+			stratosUrl = stratosAPI.getUrl();
 			stratosAPI.server().getClusterHealth();
-			LOGGER.log(Level.FINE, stratosAPI.getUrl() + " is healthy");
+			LOGGER.log(Level.FINE, stratosUrl + " is healthy");
 			return true;
 		}catch (Exception e){
-			LOGGER.log(Level.FINE, "Error occered checking: " + stratosAPI.getUrl() + " error: " + e);
+			LOGGER.log(Level.FINE, "Error occered checking stratos url: " + stratosUrl + " error: " + e);
 			return false;
 		}
 		
