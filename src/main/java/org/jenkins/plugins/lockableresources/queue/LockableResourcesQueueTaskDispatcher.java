@@ -63,6 +63,12 @@ public class LockableResourcesQueueTaskDispatcher extends QueueTaskDispatcher {
 				return new BecauseResourcesLocked("Could not find resource with name: " + name);	
 			} // If stratos is not healthy and the resource is not in local resources
 			else if (!LockableResourceStratos.isStratosHealthy(stratosAPI) && LockableResourcesManager.get().fromName(name,localResource) == null){
+				// If stratosAPI is null warn the user there is a configuration problem
+				if (stratosAPI == null) {
+					LOGGER.fine("The lockable resource plugin is misconfigured.  Could not get stratos API.  Unable to lock " + name);
+					return new BecauseResourcesLocked("The lockable resource plugin is misconfigured.  Could not get stratos API.  Unable to lock " + name);
+				}
+				// Tell the user that the stratos server is not healthy
 				LOGGER.fine(stratosAPI.getUrl() + " is not healthy. Unable to lock " + name);
 				return new BecauseResourcesLocked(stratosAPI.getUrl() + " is not healthy. Unable to lock " + name);
 			}
