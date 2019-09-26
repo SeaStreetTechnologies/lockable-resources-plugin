@@ -8,6 +8,8 @@
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 package org.jenkins.plugins.lockableresources.queue;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,36 +46,42 @@ public class LockableResourcesQueueTaskDispatcher extends QueueTaskDispatcher {
 		Job<?, ?> project = Utils.getProject(item);
 		if (project == null)
 			return null;	
-		List<LockableResource> localResource = LockableResourcesManager.get().getlocalResources();
-		List<LockableResource> allResource = LockableResourcesManager.get().getResources();
-		StratOSControllerAPI stratosAPI = LockableResourceStratos.getControllerAPI();
 		
 		RequiredResourcesProperty property = Utils.getProperty(project);
 		// If the project does not require any lockable resources then return null
 		if(property == null)
 			return null;
+		
+		// Get all the resources that the job needs.
 		String names = property.getResourceNames();
-		// Loop through all the resources to verify they are valid.
-		for (String name : names.split(" ")) {
-			LOGGER.fine("Verifying that " + name + " is a valid resource");
-			
-			// If stratos is healthy but the resource is not a valid resource
-			if(LockableResourceStratos.isStratosHealthy(stratosAPI) && LockableResourcesManager.get().fromName(name,allResource) == null){
-				LOGGER.fine(name + " is not a lockable resource");
-				return new BecauseResourcesLocked("Could not find resource with name: " + name);	
-			} // If stratos is not healthy and the resource is not in local resources
-			else if (!LockableResourceStratos.isStratosHealthy(stratosAPI) && LockableResourcesManager.get().fromName(name,localResource) == null){
-				// If stratosAPI is null warn the user there is a configuration problem
-				if (stratosAPI == null) {
-					LOGGER.fine("The lockable resource plugin is misconfigured.  Could not get stratos API.  Unable to lock " + name);
-					return new BecauseResourcesLocked("The lockable resource plugin is misconfigured.  Could not get stratos API.  Unable to lock " + name);
+		List<String> jobResources = new ArrayList<String>(Arrays.asList(names.split("\\s+")));
+
+		if (!LockableResourcesManager.get().compareLocalResources(jobResources)){
+			// There are some remote resources. Check to see if there is a valid config
+			StratOSControllerAPI stratosAPI = LockableResourceStratos.getControllerAPI();
+			if (stratosAPI != null) {
+				// Check to make sure that stratos is healthy
+				if (!LockableResourceStratos.isStratosHealthy(stratosAPI)){
+					LOGGER.fine(stratosAPI.getUrl() + " is not healthy.");
+					return new BecauseResourcesLocked(stratosAPI.getUrl() + " is not healthy.");
 				}
-				// Tell the user that the stratos server is not healthy
-				LOGGER.fine(stratosAPI.getUrl() + " is not healthy. Unable to lock " + name);
-				return new BecauseResourcesLocked(stratosAPI.getUrl() + " is not healthy. Unable to lock " + name);
+			}else{
+				LOGGER.fine("The lockable resource plugin is misconfigured.  Could not get stratos API.");
+				return new BecauseResourcesLocked("The lockable resource plugin is misconfigured.  Could not get stratos API.");
 			}
 		}
 		
+		// Verify that all resources are valid.
+		List<LockableResource> allResources = LockableResourcesManager.get().getResources();
+		for (String resource: jobResources) {
+			LOGGER.fine("Checking to make sure " + resource + " is a valid resource.");
+			if (LockableResourcesManager.get().fromName(resource,allResources) == null) {
+				// This is not a valid resource.  Block the job
+				LOGGER.fine(resource + " is not a lockable resource");
+				return new BecauseResourcesLocked("Could not find resource with name: " + resource);
+			}
+		}
+
 		LockableResourcesStruct resources = Utils.requiredResources(project);
 		if (resources == null ||
 			(resources.required.isEmpty() && resources.label.isEmpty())) {

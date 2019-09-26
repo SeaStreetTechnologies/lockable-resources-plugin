@@ -625,6 +625,22 @@ public class LockableResourcesManager extends GlobalConfiguration {
 		return localResources;
 	}
 	
+	public boolean compareLocalResources(List<String> resources){
+		List<String> localResourcesString = new ArrayList<String>();
+		for (LockableResource lr : localResources) {
+			localResourcesString.add(lr.toString());
+		}
+		return localResourcesString.containsAll(resources);
+	}
+	
+	public boolean compareRemoteResources(List<String> jobResources){
+		List<String> remoteResourcesString = new ArrayList<String>();
+		for (LockableResourceStratos rr : getStratosResources()) {
+			remoteResourcesString.add(rr.toString());
+		}
+		return remoteResourcesString.containsAll(jobResources);
+	}
+	
 	@Exported
 	public List<LockableResourceStratos> getStratosResources() {
 		return LockableResourceStratos.getStratosResources();
