@@ -62,26 +62,20 @@ public class LockableResourcesManager extends GlobalConfiguration {
 		stratosURL = new String();
 		username = new String();
 		password = new String();
-		resources = new ArrayList<LockableResource>();
 		load();	
-		moveOriginalResources();
+		if (!resources.isEmpty())
+			moveOriginalResources();
 		
 	}
 	
-	public void moveOriginalResources(){
+	private void moveOriginalResources(){
 		
-		List<LockableResource> originalResources = getOriginalResourcesFromConfigFile();
-		if (!originalResources.isEmpty()){
-			// There are old resources.  We need to make them local resources
-			for (LockableResource r : originalResources) {
-				// add all the original resources as local resources
-				localResources.add(r);
-			}
-			// Remove the original resources
-			originalResources.removeAll(localResources);
-			// Now that the original resources are local resources save the config.
-			save();
+		for (LockableResource r : resources) {
+			// add all the original resources as local resources
+			localResources.add(r);
 		}
+		resources.removeAll(localResources);
+		save();
 	}
 
 	public List<LockableResource> getResources() {
@@ -643,11 +637,6 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	@Exported
 	public List<LockableResource> getlocalResources() {
 		return localResources;
-	}
-	
-	@Exported
-	public List<LockableResource> getOriginalResourcesFromConfigFile() {
-		return resources;
 	}
 	
 	public boolean compareLocalResources(List<String> resources){
