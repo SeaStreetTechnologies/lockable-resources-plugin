@@ -48,6 +48,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	private String stratosURL;
 	private String username;
 	private String password;
+	private List<LockableResource> resources;
 
 	/**
 	 * Only used when this lockable resource is tried to be locked by {@link LockStep},
@@ -61,7 +62,20 @@ public class LockableResourcesManager extends GlobalConfiguration {
 		stratosURL = new String();
 		username = new String();
 		password = new String();
-		load();		
+		load();	
+		if (!resources.isEmpty())
+			moveOriginalResources();
+		
+	}
+	
+	private void moveOriginalResources(){
+		
+		for (LockableResource r : resources) {
+			// add all the original resources as local resources
+			localResources.add(r);
+		}
+		resources.removeAll(localResources);
+		save();
 	}
 
 	public List<LockableResource> getResources() {
