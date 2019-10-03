@@ -15,6 +15,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -26,6 +27,7 @@ import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.StaplerRequest;
 import org.kohsuke.stapler.export.Exported;
 
+import com.seastreet.client.api.StratOSControllerAPI;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.Nullable;
 import hudson.Extension;
@@ -80,7 +82,6 @@ public class LockableResourcesManager extends GlobalConfiguration {
 
 	public List<LockableResource> getResources() {
 		List<LockableResource> resources = new ArrayList<LockableResource>();
-
 		List<LockableResourceStratos> sr = LockableResourceStratos.getStratosResources();
 		if(sr != null)
 			resources.addAll(sr);
@@ -88,6 +89,21 @@ public class LockableResourcesManager extends GlobalConfiguration {
 
 		return resources;
 
+	}
+	
+	public List<LockableResource> getResources(boolean processQueue) {
+		
+		// Before returning a list of resources remove any out dated reservations a resource might still have.
+		if (processQueue){
+			Queue<Run<?, ?>> downStratosCompletedBuilds = LockableResourceStratos.getQueuedResourcesFromBuild();
+			if (!downStratosCompletedBuilds.isEmpty()){
+				StratOSControllerAPI stratosAPI = LockableResourceStratos.getControllerAPI();
+				if (stratosAPI != null) 
+					if (LockableResourceStratos.isStratosHealthy(stratosAPI))
+						LockableResourceStratos.processQueue();
+			}
+		}
+		return getResources();
 	}
 	
 	

@@ -10,12 +10,15 @@ package org.jenkins.plugins.lockableresources.queue;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Queue;
 import java.util.logging.Logger;
 
 import org.jenkins.plugins.lockableresources.LockableResource;
+import org.jenkins.plugins.lockableresources.LockableResourceStratos;
 import org.jenkins.plugins.lockableresources.LockableResourcesManager;
 import org.jenkins.plugins.lockableresources.actions.LockedResourcesBuildAction;
 import org.jenkins.plugins.lockableresources.actions.ResourceVariableNameAction;
+import com.seastreet.client.api.StratOSControllerAPI;
 
 import hudson.Extension;
 import hudson.matrix.MatrixBuild;
@@ -105,6 +108,20 @@ public class LockRunListener extends RunListener<Run<?, ?>> {
 			LOGGER.fine(build.getFullDisplayName() + " released lock on "
 					+ required);
 		}
+		// There could be stratos resources and the server is down.
+		Queue<Run<?, ?>> downStratosBuilds = LockableResourceStratos.getQueuedResourcesFromBuild();
+		StratOSControllerAPI stratosAPI = LockableResourceStratos.getControllerAPI();
+		if (stratosAPI != null) {
+			if (!LockableResourceStratos.isStratosHealthy(stratosAPI)){
+				LOGGER.fine(stratosAPI.getUrl() + " is not healthy.");
+				downStratosBuilds.add(build);
+			}else if (!downStratosBuilds.isEmpty()){
+				// Since the server is healthy and there is a queue of resource we should process it.
+				LOGGER.fine(stratosAPI.getUrl() + " is healthy process the queue.");
+				LockableResourceStratos.processQueue();
+			}
+		}
+		
 
 	}
 
