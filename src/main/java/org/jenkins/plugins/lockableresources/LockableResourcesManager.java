@@ -715,6 +715,8 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	}
 	
 	public void processDownQueue(){
+		// create a list of resources to unlock
+		List<LockableResource> resourcesToUnlock = new ArrayList<LockableResource>();
 		// get a list of all resources
 		List<LockableResource> allResources = getResources();
 		for(LockableResource resource : allResources){
@@ -722,14 +724,13 @@ public class LockableResourcesManager extends GlobalConfiguration {
 				String bn = resource.getBuildName().replace(" ", "");
 				LOGGER.fine(resource + " has a build name of " + bn);
 				if(downStratosBuilds.contains(bn)){
-					LOGGER.fine(resource + " has a lock from a build that has been finished.  Unlocking from build: " + bn);
-					List<LockableResource> resourceToUnlock = new ArrayList<LockableResource>();
-					resourceToUnlock.add(resource);
-					// call unlock
-					unlock(resourceToUnlock, null);
+					LOGGER.fine(resource + " has a lock from a build that has been finished.  Will unlocking from build: " + bn);
+					resourcesToUnlock.add(resource);
 				}
 			}
 		}
+		// Unlock all of the resources that were found
+		unlock(resourcesToUnlock, null);
 		downStratosBuilds.clear();
 		save();
 	}
