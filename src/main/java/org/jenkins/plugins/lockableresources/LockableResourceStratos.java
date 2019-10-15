@@ -5,11 +5,9 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Queue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -33,8 +31,6 @@ public class LockableResourceStratos extends LockableResource {
 	public LockableResourceStratos(String name) {
 		super(name);
 	}
-	
-	static Queue<Run<?, ?>> downStratosBuilds = new LinkedList<Run<?, ?>>();
 
 	/**
 	 * Creates a stratos resource if one does not exist
@@ -165,32 +161,6 @@ public class LockableResourceStratos extends LockableResource {
 			return false;
 		}
 		
-	}
-	
-	/**
-	 * If stratos was down when a build finishes there is a chance that the reservation is still there.
-	 * Returns a queue of builds that finished while stratos was down.
-	 * 
-	 * @return queue of builds
-	 */
-	public static Queue<Run<?, ?>> getQueuedResourcesFromBuild(){
-		return downStratosBuilds;
-	}
-	
-	/**
-	 * Process the queue of builds that finished when stratos was down.
-	 */
-	public static void processQueue (){
-				
-		for (Run<?, ?> build : downStratosBuilds) {
-			List<LockableResource> required = LockableResourcesManager.get().getResourcesFromBuild(build);
-			if (required.size() > 0) {
-				LockableResourcesManager.get().unlock(required, build);
-				LOGGER.fine(build.getFullDisplayName() + " released lock on "
-						+ required);
-			}
-		}
-		downStratosBuilds.clear();
 	}
 	
 	/**

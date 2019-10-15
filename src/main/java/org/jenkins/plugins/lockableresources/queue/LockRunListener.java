@@ -109,20 +109,23 @@ public class LockRunListener extends RunListener<Run<?, ?>> {
 					+ required);
 		}
 		// There could be stratos resources and the server is down.
-		Queue<Run<?, ?>> downStratosBuilds = LockableResourceStratos.getQueuedResourcesFromBuild();
+		Queue<String> downStratosBuilds = LockableResourcesManager.get().getDownStratosBuilds();
+
 		StratOSControllerAPI stratosAPI = LockableResourceStratos.getControllerAPI();
 		if (stratosAPI != null) {
 			if (!LockableResourceStratos.isStratosHealthy(stratosAPI)){
 				LOGGER.fine(stratosAPI.getUrl() + " is not healthy.");
-				downStratosBuilds.add(build);
+				String buildID = build.getExternalizableId();
+				downStratosBuilds.add(buildID);
+				LOGGER.fine(buildID + " was added to the queue of builds that finished while stratos was down.");
+				// save the id that was just added
+				LockableResourcesManager.get().save();
 			}else if (!downStratosBuilds.isEmpty()){
 				// Since the server is healthy and there is a queue of resource we should process it.
 				LOGGER.fine(stratosAPI.getUrl() + " is healthy process the queue.");
-				LockableResourceStratos.processQueue();
+				LockableResourcesManager.get().processDownQueue();
 			}
 		}
-		
-
 	}
 
 	@Override

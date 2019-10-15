@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -51,6 +52,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	private String username;
 	private String password;
 	private List<LockableResource> resources;
+	private Queue <String> downStratosBuilds;
 
 	/**
 	 * Only used when this lockable resource is tried to be locked by {@link LockStep},
@@ -64,6 +66,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
 		stratosURL = new String();
 		username = new String();
 		password = new String();
+		downStratosBuilds = new LinkedList<String>();
 		load();	
 		if (!resources.isEmpty())
 			moveOriginalResources();
@@ -95,12 +98,13 @@ public class LockableResourcesManager extends GlobalConfiguration {
 		
 		// Before returning a list of resources remove any out dated reservations a resource might still have.
 		if (processQueue){
-			Queue<Run<?, ?>> downStratosCompletedBuilds = LockableResourceStratos.getQueuedResourcesFromBuild();
+			Queue<String> downStratosCompletedBuilds = getDownStratosBuilds();
+
 			if (!downStratosCompletedBuilds.isEmpty()){
 				StratOSControllerAPI stratosAPI = LockableResourceStratos.getControllerAPI();
 				if (stratosAPI != null) 
 					if (LockableResourceStratos.isStratosHealthy(stratosAPI))
-						LockableResourceStratos.processQueue();
+						processDownQueue();
 			}
 		}
 		return getResources();
@@ -526,6 +530,10 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	public boolean configure(StaplerRequest req, JSONObject json)
 			throws FormException {
 		localResources.clear();
+		// Get the stratos config so that we can use it when we get all resources.
+		stratosURL = json.get("stratosURL").toString();
+		username = json.getString("username").toString();
+		password = Secret.fromString(json.getString("password").toString()).getEncryptedValue();
 
 		try {
 			List<LockableResource> newResouces = req.bindJSONToList(
@@ -542,11 +550,6 @@ public class LockableResourcesManager extends GlobalConfiguration {
 					localResources.add(r);
 				}
 			}
-
-			// Get the stratos config
-			stratosURL = json.get("stratosURL").toString();
-			username = json.getString("username").toString();
-			password = Secret.fromString(json.getString("password").toString()).getEncryptedValue();
 			
 			save();
 			return true;
@@ -704,7 +707,32 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	@Exported
 	public String getPassword() {
 		return password;
-	}	
+	}
+	
+	@Exported
+	public Queue<String> getDownStratosBuilds(){
+		return downStratosBuilds;
+	}
+	
+	public void processDownQueue(){
+		// get a list of all resources
+		List<LockableResource> allResources = getResources();
+		for(LockableResource resource : allResources){
+			if (resource.getBuildName() != null){
+				String bn = resource.getBuildName().replace(" ", "");
+				LOGGER.fine(resource + " has a build name of " + bn);
+				if(downStratosBuilds.contains(bn)){
+					LOGGER.fine(resource + " has a lock from a build that has been finished.  Unlocking from build: " + bn);
+					List<LockableResource> resourceToUnlock = new ArrayList<LockableResource>();
+					resourceToUnlock.add(resource);
+					// call unlock
+					unlock(resourceToUnlock, null);
+				}
+			}
+		}
+		downStratosBuilds.clear();
+		save();
+	}
 	
 	private static final Logger LOGGER = Logger.getLogger(LockableResourcesManager.class.getName());
 
