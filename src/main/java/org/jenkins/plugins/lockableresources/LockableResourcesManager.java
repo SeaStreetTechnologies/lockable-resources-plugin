@@ -13,8 +13,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -26,6 +28,7 @@ import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.StaplerRequest;
 import org.kohsuke.stapler.export.Exported;
 
+import com.seastreet.client.api.StratOSControllerAPI;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.Nullable;
 import hudson.Extension;
@@ -49,6 +52,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	private String username;
 	private String password;
 	private List<LockableResource> resources;
+	private Queue <String> downStratosBuilds;
 
 	/**
 	 * Only used when this lockable resource is tried to be locked by {@link LockStep},
@@ -62,6 +66,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
 		stratosURL = new String();
 		username = new String();
 		password = new String();
+		downStratosBuilds = new LinkedList<String>();
 		load();	
 		if (!resources.isEmpty())
 			moveOriginalResources();
@@ -80,7 +85,6 @@ public class LockableResourcesManager extends GlobalConfiguration {
 
 	public List<LockableResource> getResources() {
 		List<LockableResource> resources = new ArrayList<LockableResource>();
-
 		List<LockableResourceStratos> sr = LockableResourceStratos.getStratosResources();
 		if(sr != null)
 			resources.addAll(sr);
@@ -88,6 +92,22 @@ public class LockableResourcesManager extends GlobalConfiguration {
 
 		return resources;
 
+	}
+	
+	public List<LockableResource> getResources(boolean processQueue) {
+		
+		// Before returning a list of resources remove any out dated reservations a resource might still have.
+		if (processQueue){
+			Queue<String> downStratosCompletedBuilds = getDownStratosBuilds();
+
+			if (!downStratosCompletedBuilds.isEmpty()){
+				StratOSControllerAPI stratosAPI = LockableResourceStratos.getControllerAPI();
+				if (stratosAPI != null) 
+					if (LockableResourceStratos.isStratosHealthy(stratosAPI))
+						processDownQueue();
+			}
+		}
+		return getResources();
 	}
 	
 	
@@ -510,6 +530,10 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	public boolean configure(StaplerRequest req, JSONObject json)
 			throws FormException {
 		localResources.clear();
+		// Get the stratos config so that we can use it when we get all resources.
+		stratosURL = json.get("stratosURL").toString();
+		username = json.getString("username").toString();
+		password = Secret.fromString(json.getString("password").toString()).getEncryptedValue();
 
 		try {
 			List<LockableResource> newResouces = req.bindJSONToList(
@@ -526,11 +550,6 @@ public class LockableResourcesManager extends GlobalConfiguration {
 					localResources.add(r);
 				}
 			}
-
-			// Get the stratos config
-			stratosURL = json.get("stratosURL").toString();
-			username = json.getString("username").toString();
-			password = Secret.fromString(json.getString("password").toString()).getEncryptedValue();
 			
 			save();
 			return true;
@@ -688,7 +707,33 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	@Exported
 	public String getPassword() {
 		return password;
-	}	
+	}
+	
+	@Exported
+	public Queue<String> getDownStratosBuilds(){
+		return downStratosBuilds;
+	}
+	
+	public void processDownQueue(){
+		// create a list of resources to unlock
+		List<LockableResource> resourcesToUnlock = new ArrayList<LockableResource>();
+		// get a list of all resources
+		List<LockableResource> allResources = getResources();
+		for(LockableResource resource : allResources){
+			if (resource.getBuildName() != null){
+				String bn = resource.getBuildName().replace(" ", "");
+				LOGGER.fine(resource + " has a build name of " + bn);
+				if(downStratosBuilds.contains(bn)){
+					LOGGER.fine(resource + " has a lock from a build that has been finished.  Will unlocking from build: " + bn);
+					resourcesToUnlock.add(resource);
+				}
+			}
+		}
+		// Unlock all of the resources that were found
+		unlock(resourcesToUnlock, null);
+		downStratosBuilds.clear();
+		save();
+	}
 	
 	private static final Logger LOGGER = Logger.getLogger(LockableResourcesManager.class.getName());
 

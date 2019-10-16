@@ -72,7 +72,7 @@ public class LockableResourcesRootAction implements RootAction {
 	}
 
 	public List<LockableResource> getResources() {
-		return LockableResourcesManager.get().getResources();
+		return LockableResourcesManager.get().getResources(true);
 	}
 
 	public int getFreeResourceAmount(String label) {

@@ -31,7 +31,7 @@ public class LockableResourceStratos extends LockableResource {
 	public LockableResourceStratos(String name) {
 		super(name);
 	}
-	
+
 	/**
 	 * Creates a stratos resource if one does not exist
 	 * @param userName

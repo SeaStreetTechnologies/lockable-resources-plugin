@@ -71,8 +71,8 @@ public class LockableResourcesQueueTaskDispatcher extends QueueTaskDispatcher {
 			}
 		}
 		
-		// Verify that all resources are valid.
-		List<LockableResource> allResources = LockableResourcesManager.get().getResources();
+		// Verify that all resources are valid and update resources reservations.
+		List<LockableResource> allResources = LockableResourcesManager.get().getResources(true);
 		for (String resource: jobResources) {
 			LOGGER.fine("Checking to make sure " + resource + " is a valid resource.");
 			if (LockableResourcesManager.get().fromName(resource,allResources) == null) {
